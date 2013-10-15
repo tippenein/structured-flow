@@ -1,30 +1,74 @@
 module Structured where
 
--- a string value and a Node that it points to.
-data Node = Node { value :: String
-                 , next :: Node
-                 } deriving Show
+import Data.Map as Map
+
 -- Decision points have a left and a right branch 
 -- Left is False, Right is True
-data DecisionP = DecisionP { t :: Node
-                           , f :: Node
-                           } deriving Show
-
 -- a flow graph can start with either a node or a decision
-data FlowGraph = FlowGraph Node | DecisionP
-
---        _______
+-- 
+--        ----- {S1}
 --        |      |
 --        |    <cond>   _____
 --        | F  /    \T |    |
 --        ---{S3}  <cond>   |
 --                 /    \   |
---               {S4}  {S5}--
+--               {S5}  {S6}--
 --                 |
---                end
+--                exit 7
 --
+data FromFile = FFExitNode Int  
+              | FFStep Int Int  -- id, next id
+              | FFBranch Int Int Int
 
--- How to represent DAGs ?!
+data Flow = ExitNode Int
+          | Step Int Flow
+          | Branch Int Flow Flow
+        deriving (Show)
 
-generateStructured :: FlowGraph -> FlowGraph
-generateStructured fg = Nothing
+
+mkFlow :: Map Int FromFile -> FromFile -> Flow
+mkFlow ff start = go start Map.empty
+  where
+  -- Exit node
+  go (FFExitNode exitid) _ = ExitNode exitid
+  -- Normal Node case
+  go (FFStep stepid nextid) flowMap =
+    case Map.lookup stepid flowMap of
+      Nothing ->
+        -- insert the node id and tie the knot
+        let step = Step stepid next
+            next = go (ff ! nextid) $ Map.insert stepid step flowMap
+        in step
+      Just step -> step
+  -- branch case
+  go (FFBranch branchid leftid rightid) flowMap =
+    case Map.lookup branchid flowMap of
+      Nothing ->
+        -- insert the condition id and tie the knot
+        let branch = Branch branchid left right
+            fm'    = Map.insert branchid branch flowMap
+            left   = go (ff ! leftid) fm'
+            right  = go (ff ! rightid) fm'
+        in branch
+      Just b -> b
+
+-- generateStructured :: FlowGraph -> FlowGraph
+-- generateStructured fg = Nothing
+
+ffmFromList :: [FromFile] -> Map Int FromFile
+ffmFromList ffl = Map.fromList $ [(getId n, n) | n <- ffl]
+  where
+    getId :: FromFile -> Int
+    getId ff =
+      case ff of
+        FFStep n _ -> n
+        FFBranch n _ _ -> n
+        FFExitNode n -> n
+
+main =
+  mkFlow ffm (ffm ! 1)
+  where
+    ffm = ffmFromList ffl
+    -- FromFile representation of the flowgraph drawn at the top of this file
+    ffl = [(FFStep 1 2), (FFBranch 2 3 4), (FFStep 3 1), (FFBranch 4 5 6),
+          (FFStep 5 7), (FFStep 6 4), (FFExitNode 7)]
